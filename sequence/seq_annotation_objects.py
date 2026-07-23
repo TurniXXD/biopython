@@ -1,16 +1,11 @@
-from collections import defaultdict
-from gzip import GzipFile
 from io import TextIOWrapper
 from pathlib import Path
 from urllib.request import urlopen
 
-import matplotlib.pyplot as plt
-import seaborn as sns
 from Bio import SeqIO
 from Bio.Seq import Seq
+from Bio.SeqFeature import SeqFeature, SimpleLocation
 from Bio.SeqRecord import SeqRecord
-
-from sequence.utils import trim_ends
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -67,68 +62,27 @@ def annotation_seq() -> None:
     if seq is None:
         raise ValueError("Record has no sequence")
 
-    count = defaultdict(int)
+    # Gene is read from the opposite strand
+    feature = SeqFeature(SimpleLocation(5, 18, strand=-1), type="gene")
 
-    for i, letter in enumerate(seq):
-        count[letter] += 1
+    location = feature.location
 
-    total = sum(count.values())
+    if location is None:
+        raise ValueError("Feature has no location")
 
-    for letter, letter_count in count.items():
-        print(f"{letter}: {100 * letter_count / total:.2f}% {letter_count}")
+    feature_seq = seq[location.start : location.end].reverse_complement()
+    print(feature_seq)
+    extracted_feature_seq = feature.extract(seq)
+    print(extracted_feature_seq)
 
-    window_size = 100
-
-    positions = []
-    g_fractions = []
-
-    for start in range(0, len(seq), window_size):
-        window = seq[start : start + window_size]
-
-        positions.append(start + 1)
-        g_fractions.append(window.count("G") / len(window))
-
-    fig, ax = plt.subplots(figsize=(16, 9))
-    ax.plot(positions, g_fractions)
-
-    ax.set_xlabel("Sequence position")
-    ax.set_ylabel("G fraction per 100 bases")
-
-    # plt.show()
-
-    url = "https://raw.githubusercontent.com/biopython/biopython/master/Tests/Quality/example.fastq.gz"
-    qual_pos = defaultdict(list)
-
-    with urlopen(url) as response:
-        with GzipFile(fileobj=response) as gz:
-            with TextIOWrapper(gz, encoding="utf-8") as handle:
-                for record in SeqIO.parse(handle, "fastq"):
-                    qualities = record.letter_annotations["phred_quality"]
-
-                    trimmed = trim_ends(record, min_quality=20)
-
-                    if len(trimmed) >= 20:
-                        print(trimmed.id, len(record), "->", len(trimmed))
-
-                    for index, quality in enumerate(qualities, start=1):
-                        # if index <= 25 or quality == 40:
-                        #     continue
-
-                        qual_pos[index].append(quality)
-
-    if not qual_pos:
-        raise ValueError("No quality values matched the filter")
-
-    positions = sorted(qual_pos)
-    values_per_position = [qual_pos[position] for position in positions]
-
-    fig, ax = plt.subplots(figsize=(16, 9))
-    sns.boxplot(data=values_per_position, ax=ax)
-
-    ax.set_xticks(range(len(positions)))
-    ax.set_xticklabels([str(position) for position in positions])
-
-    ax.set_xlabel("Read position")
-    ax.set_ylabel("Phred quality")
-
-    # plt.show()
+    unformatted_record = SeqRecord(
+        Seq(
+            "MMYQQGCFAGGTVLRLAKDLAENNRGARVLVVCSEITAVTFRGPSETHLDSMVGQALFGD"
+            "GAGAVIVGSDPDLSVERPLYELVWTGATLLPDSEGAIDGHLREVGLTFHLLKDVPGLISK"
+            "NIEKSLKEAFTPLGISDWNSTFWIAHPGGPAILDQVEAKLGLKEEKMRATREVLSEYGNM"
+            "SSAC"
+        ),
+        id="gi|14150838|gb|AAK54648.1|AF376133_1",
+        description="chalcone synthase [Cucumis sativus]",
+    )
+    print(unformatted_record.format("fasta"))
